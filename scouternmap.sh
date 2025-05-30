@@ -18,8 +18,8 @@ print_banner() {
               +#+  +#+#+# +#+       +#+ +#+     +#+ +#+        
              ###    #### ###       ### ###     ### ###
              
-         		  ║┄║┄║ Coded by Br4hx ║┄║┄║
-        		  https://github.com/BraVRom
+         	      ║┄║┄║ Coded by Br4hx ║┄║┄║
+        	      https://github.com/BraVRom
       
  ${RESET}"
     sleep 1
