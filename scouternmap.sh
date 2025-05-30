@@ -20,28 +20,48 @@ print_banner() {
              
          		  ║┄║┄║ Coded by Br4hx ║┄║┄║
         		  https://github.com/BraVRom
-${RESET}"
+      
+ ${RESET}"
     sleep 1
 }
 
-if [ -z "$1" ]; then
-    echo -e "${RED}[!] Uso: $0 <IP o dominio>${RESET}"
+# Validación parámetros IP o dominio
+if [ "$#" -ne 1 ]; then
+    echo -e "${RED}[!] Uso correcto: $0 <IP o dominio>${RESET}"
+    exit 1
+fi
+
+host="$1"
+
+# regex simple
+if ! [[ "$host" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$host" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+    echo -e "${RED}[!] El parámetro debe ser una IP o un dominio válido.${RESET}"
     exit 1
 fi
 
 print_banner
 
-host="$1"
-timestamp=$(date "+%Y-%m-%d_%H-%M-%S")
-outdir="scan_$host"
+timestamp=$(date "+%Y-%m-%d_%H-%M-%S")  # timestamp
+outdir="scan_${host}_${timestamp}"
 html_out="$outdir/reporte_nmap.html"
 mkdir -p "$outdir"
 
 echo -e "${CYAN}[*] Escaneando puertos en $host...${RESET}"
-nmap_output="$outdir/nmap_raw.txt"
-nmap -p- -sS -sC -sV -Pn -n "$host" -oN "$nmap_output" > /dev/null
 
-mapfile -t resultados < <(awk '/^PORT/{flag=1; next} /^Nmap done:/{flag=0} flag && /open/' "$nmap_output")
+nmap_output="$outdir/nmap_raw.txt"
+
+# Uso de nmap sin redirigir salida y con la opción -oN (normal output) para guardar en archivo
+nmap -p- -sS -sC -sV -Pn -n "$host" -oN "$nmap_output"
+if [ $? -ne 0 ]; then
+    echo -e "${RED}[!] Error ejecutando nmap.${RESET}"
+    exit 1
+fi
+
+mapfile -t resultados < <(awk '
+    /^PORT/{flag=1; next} 
+    /^Nmap done:/{flag=0} 
+    flag && /open/ && $2=="open"
+' "$nmap_output")
 
 if [ ${#resultados[@]} -eq 0 ]; then
     echo -e "${RED}[!] No se encontraron puertos abiertos.${RESET}"
@@ -55,8 +75,16 @@ obtener_http_title() {
     local port="$2"
     local proto="$3"
     local url="${proto}://${ip}:${port}"
-    title=$(curl -s --max-time 5 -k "$url" | grep -oP '(?<=<title>).*?(?=</title>)' | head -n1)
-    echo "$title"
+
+    # Solo curl si el servicio es http o https
+    if [[ "$proto" == "http" || "$proto" == "https" ]]; then
+        # Timeout 5 segundos
+        local title=$(curl -s --max-time 5 -k "$url" | grep -oP '(?<=<title>).*?(?=</title>)' | head -n1)
+        [[ -z "$title" ]] && title="—"
+        echo "$title"
+    else
+        echo "—"
+    fi
 }
 
 {
@@ -193,15 +221,28 @@ EOF
 } > "$html_out"
 
 for linea in "${resultados[@]}"; do
-    puerto=$(echo "$linea" | awk '{print $1}')
-    estado=$(echo "$linea" | awk '{print $2}')
-    servicio=$(echo "$linea" | awk '{print $3}')
-    version=$(echo "$linea" | cut -d' ' -f4-)
-    proto="http"
+    local_linea="$linea"
+    puerto=$(echo "$local_linea" | awk '{print $1}')
+    estado=$(echo "$local_linea" | awk '{print $2}')
+    servicio=$(echo "$local_linea" | awk '{print $3}')
+    version=$(echo "$local_linea" | cut -d' ' -f4-)
     port_num=$(echo "$puerto" | cut -d'/' -f1)
-    [[ "$port_num" == "443" || "$port_num" == "8443" ]] && proto="https"
-    titulo=$(obtener_http_title "$host" "$port_num" "$proto")
-    [[ -z "$titulo" ]] && titulo="—"
+    
+    # comprueba si el servicio es HTTPS (puerto típico)
+    if [[ "$port_num" == "443" || "$port_num" == "8443" ]]; then
+        proto="https"
+    elif [[ "$servicio" == "http" || "$servicio" == "https" ]]; then
+        proto="$servicio"
+    else
+        proto=""
+    fi
+
+    if [[ -n "$proto" ]]; then
+        titulo=$(obtener_http_title "$host" "$port_num" "$proto")
+    else
+        titulo="—"
+    fi
+
     echo "<tr><td>$puerto</td><td>$estado</td><td>$servicio</td><td>$version</td><td>$titulo</td></tr>" >> "$html_out"
 done
 
