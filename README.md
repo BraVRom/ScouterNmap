@@ -27,6 +27,9 @@ Opcionalmente (pero recomendado):
 
 - Un navegador web para visualizar el informe HTML.
 
+
+![Captura](2.png)
+
 ## 📥 Instalación
 
 1. Clona el repositorio:
